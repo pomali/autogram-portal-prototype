@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 
@@ -58,13 +59,36 @@ app.get("/iframe", (c) => {
 app.post("/start-signing", async (c) => {
   // Mocking the signing process
   const { apiKey } = await c.req.json();
-  if (!apiKey || apiKey !== (process.env.AGP_API_KEY || "mock-api-key")) {
+  if (!apiKey || apiKey !== (process.env.AGP_API_KEY || (() => { throw new Error("AGP_API_KEY is not set") })())) {
     return c.text("Invalid API key", 401);
   }
 
   // Mocking the signing process
   const sessionId = "mock-session-id";
   return c.json({ sessionId });
+});
+
+app.get("/sdk.js", (c) => {
+  return c.text(
+    `
+    (function() {
+      window.agp = {
+        initIframe: function(sessionId) {
+          const iframe = document.createElement('iframe');
+          iframe.src = \`${process.env.AGP_BASE_URL}/iframe?sessionId=\${sessionId}\`;
+          iframe.style.width = '100%';
+          iframe.style.height = '600px';
+          iframe.style.border = 'none';
+          document.body.appendChild(iframe);
+        },
+      };
+    })();
+  `,
+    200,
+    {
+      "Content-Type": "application/javascript",
+    }
+  );
 });
 
 serve(

@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 
@@ -48,7 +49,7 @@ app.get("/sign", async (c) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      apiKey: process.env.AGP_API_KEY || "mock-api-key",
+      apiKey: process.env.AGP_API_KEY || (() => { throw new Error("AGP_API_KEY is not set") })(),
     }),
   });
 
@@ -66,7 +67,11 @@ app.get("/sign", async (c) => {
     <body>
       <h1>DA Sign</h1>
       <p>Signing process started. AGP session ID: ${data.sessionId}</p>
-      <iframe src="${agpUrl}/iframe?sessionId=${data.sessionId}" style="width: 100%; height: 600px; border: none;"></iframe>
+      <!-- <iframe src="${agpUrl}/iframe?sessionId=${data.sessionId}" style="width: 100%; height: 600px; border: none;"></iframe> -->
+      <script src="${agpUrl}/sdk.js"></script>
+      <script>
+        agp.initIframe("${data.sessionId}");
+      </script>
     </body>
     </html>
   `);

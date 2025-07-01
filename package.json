@@ -7,7 +7,7 @@
     "dev": "npm-run-all --parallel dev:*",
     "dev:agp": "cd agp && npm run dev",
     "dev:da": "cd da && npm run dev",
-    "install-deps": "npm install && npm run install:*",
+    "install-deps": "npm install && npm-run-all --parallel install:*",
     "install:agp": "cd agp && npm install",
     "install:da": "cd da && npm install"
   },
