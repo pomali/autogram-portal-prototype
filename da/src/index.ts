@@ -1,27 +1,27 @@
 import "dotenv/config";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { sha256 } from "hono/utils/crypto";
 
 const app = new Hono();
 
-const head = `
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <style>
-        body {
-          font-family: "Comic Sans MS", "Comic Sans", cursive;
-          background-color: #f4f4f4;
-          color: #333;
-          text-align: center;
-          padding: 50px;
-        }
-        h1 {
-          color: #007bff;
-        }
-        p {
-          color: #555;
-        }
-        </style>`;
+const mockDocuments = [
+  {
+    id: "1",
+    title: "Mock Document 1",
+    content: "This is the content of mock document 1.",
+  },
+  {
+    id: "2",
+    title: "Mock Document 2",
+    content: "This is the content of mock document 2.",
+  },
+  {
+    id: "3",
+    title: "Mock Document 3",
+    content: "This is the content of mock document 3.",
+  },
+];
 
 app.get("/", (c) => {
   return c.html(`
@@ -34,7 +34,7 @@ app.get("/", (c) => {
     <body>
       <h1>DA Server</h1>
       <p>Welcome to the DA Server. Click the button below to start the signing process.</p>
-      <a href="/sign" style="padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Start Signing</a>
+      <a href="/sign" class="button">Start Signing</a>
     </body>
     </html>
   `);
@@ -49,7 +49,17 @@ app.get("/sign", async (c) => {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      apiKey: process.env.AGP_API_KEY || (() => { throw new Error("AGP_API_KEY is not set") })(),
+      apiKey:
+        process.env.AGP_API_KEY ||
+        (() => {
+          throw new Error("AGP_API_KEY is not set");
+        })(),
+      manifest: mockDocuments.map((doc) => ({
+        id: doc.id,
+        title: doc.title,
+        hash: sha256(doc.content),
+        url: `${process.env.BASE_URL}/documents/${doc.id}`,
+      })),
     }),
   });
 
@@ -76,6 +86,57 @@ app.get("/sign", async (c) => {
     </html>
   `);
 });
+
+app.get("/documents/:id", (c) => {
+  const docId = c.req.param("id");
+  const document = mockDocuments.find((doc) => doc.id === docId);
+  console.log(`DA: Fetching document with ID: ${docId}`);
+  if (!document) {
+    return c.text("Document not found", 404);
+  }
+  return c.text(document.content, 200, {
+    "Content-Type": "text/plain",
+  });
+});
+
+app.get("/webhook", (c) => {
+  const sessionId = c.req.query("sessionId");
+  if (!sessionId) {
+    return c.text("Missing session ID", 400);
+  }
+
+  console.log(`DA: Webhook received for session ID: ${sessionId}`);
+
+  return c.text(`ok`, 200);
+});
+
+const head = `
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <style>
+        body {
+          font-family: "Comic Sans MS", "Comic Sans", cursive;
+          background-color: #f4f4f4;
+          color: #333;
+          text-align: center;
+          padding: 50px;
+        }
+        h1 {
+          color: #007bff;
+        }
+        p {
+          color: #555;
+        }
+        button, .button {
+          padding: 10px 20px;
+          background-color: #007bff;
+          font-family: "Comic Sans MS", "Comic Sans", cursive;
+          font-size: 16px;
+          color: white;
+          text-decoration: none;
+          border-radius: 5px;
+        }
+        </style>`;
 
 serve(
   {
