@@ -1,10 +1,12 @@
 import "dotenv/config";
 import { serve } from "@hono/node-server";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import sqlite3 from "sqlite3";
 
 const app = new Hono();
+app.use("*", secureHeadersMiddleware());
 
+// Database for sessions and documents
 const db = new sqlite3.Database(":memory:", (err) => {
   if (err) {
     console.error("Error opening database:", err.message);
@@ -12,7 +14,7 @@ const db = new sqlite3.Database(":memory:", (err) => {
     console.log("Connected to the in-memory SQLite database.");
     db.serialize(() => {
       db.run(
-        "CREATE TABLE documents (id TEXT PRIMARY KEY, sessionId TEXT, nth INTEGER, title TEXT, content TEXT, url TEXT, FOREIGN KEY(sessionId) REFERENCES sessions(id))"
+        "CREATE TABLE documents (id TEXT PRIMARY KEY, daId TEXT, sessionId TEXT, nth INTEGER, title TEXT, content TEXT, url TEXT, FOREIGN KEY(sessionId) REFERENCES sessions(id))"
       );
       db.run("CREATE TABLE sessions (id TEXT PRIMARY KEY, apiKey TEXT)");
       console.log("Tables created successfully.");
@@ -24,22 +26,24 @@ app.get("/", (c) => {
   return c.text("Hello AGP!");
 });
 
+// Endpoint to get the AGP iframe
 app.get("/iframe", async (c) => {
   const sessionId = c.req.query("sessionId");
   if (!sessionId) {
     return c.text("Missing session ID", 400);
   }
 
-  type Doc = {
-    id: string;
+  type DocDao = {
+    daId: string;
     title: string;
     content: string;
     url: string;
   };
-  // Validate session ID
-  const documents: Array<Doc> = await new Promise((resolve) => {
-    db.all<Doc>(
-      "SELECT documents.id, documents.title, documents.content, documents.url FROM sessions JOIN documents ON sessions.id = documents.sessionId WHERE sessions.id = ? ORDER BY documents.nth",
+
+  // Get documents for the session
+  const documents: Array<DocDao> = await new Promise((resolve) => {
+    db.all<DocDao>(
+      "SELECT documents.daId, documents.title, documents.content, documents.url FROM sessions JOIN documents ON sessions.id = documents.sessionId WHERE sessions.id = ? ORDER BY documents.nth",
       [sessionId],
       (err, rows) => {
         if (err) {
@@ -55,6 +59,24 @@ app.get("/iframe", async (c) => {
     return c.text("Invalid session ID", 401);
   }
 
+  // Generate Content Security Policy
+  // Collect hosts from document URLs to allow iframe to connect to them
+  const hosts = documents.reduce((acc, doc) => {
+    if (doc.url) {
+      const url = new URL(doc.url);
+      acc.add(url.origin);
+    }
+    return acc;
+  }, new Set<string>());
+  const connectSrc = Array.from(hosts).join(" ");
+
+  c.header(
+    "Content-Security-Policy",
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'sha256-DU8Gtv52c36PRCB4HAG3PjLLhQwb8mXcpejpnYxWBCA=';" +
+      ` connect-src 'self' ${connectSrc};`
+  );
+
+  // Return the HTML for the iframe, with the session ID and documents
   return c.html(`
     <!DOCTYPE html>
     <html lang="en">
@@ -69,7 +91,7 @@ app.get("/iframe", async (c) => {
       <script>
       const documentsManifest = ${JSON.stringify(
         documents.map((doc) => ({
-          id: doc.id,
+          id: doc.daId,
           title: doc.title,
           content: doc.content,
           url: doc.url,
@@ -124,9 +146,11 @@ app.get("/iframe", async (c) => {
   `);
 });
 
+// Endpoint to create the signing session
 app.post("/start-signing", async (c) => {
-  // Mocking the signing process
   const { apiKey, manifest } = await c.req.json();
+
+  // Validate API key
   if (
     !apiKey ||
     apiKey !==
@@ -138,7 +162,7 @@ app.post("/start-signing", async (c) => {
     return c.text("Invalid API key", 401);
   }
 
-  // Create a new session
+  // Create a new session with documents
   const sessionId = Math.random().toString(36).substring(2, 15);
   await new Promise((resolve, reject) => {
     db.serialize(() => {
@@ -156,7 +180,7 @@ app.post("/start-signing", async (c) => {
         }
       );
       const stmt = db.prepare(
-        "INSERT INTO documents (id, sessionId, nth, title, content, url) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO documents (daId, sessionId, nth, title, content, url) VALUES (?, ?, ?, ?, ?, ?)"
       );
 
       manifest.forEach(
@@ -189,6 +213,7 @@ app.post("/start-signing", async (c) => {
   return c.json({ sessionId });
 });
 
+// Endpoint to receive signed documents
 app.post("/document-signed", async (c) => {
   const { sessionId, signedDocument } = await c.req.json();
   if (!sessionId) {
@@ -211,6 +236,7 @@ app.post("/signing-complete", async (c) => {
   return c.text("ok", 200);
 });
 
+// AGP SDK 
 app.get("/sdk.js", (c) => {
   return c.text(
     `
@@ -242,6 +268,20 @@ app.get("/sdk.js", (c) => {
     }
   );
 });
+
+function secureHeadersMiddleware() {
+  return (c: Context, next: () => Promise<void>) => {
+    c.header(
+      "Content-Security-Policy",
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'sha256-DU8Gtv52c36PRCB4HAG3PjLLhQwb8mXcpejpnYxWBCA=';"
+    );
+    c.header("X-Content-Type-Options", "nosniff");
+    // c.header("X-Frame-Options", "DENY");
+    c.header("X-XSS-Protection", "1; mode=block");
+    c.header("Referrer-Policy", "no-referrer");
+    return next();
+  };
+}
 
 const head = `
       <style>
