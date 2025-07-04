@@ -64,10 +64,10 @@ app.get("/sign", async (c) => {
   // TODO replace with sha256 hashes of the documents?
   const scriptNonceInitIframe = Math.random().toString(36).substring(2, 15);
   const scriptNonceSdk = Math.random().toString(36).substring(2, 15);
-  c.header(
-    "Content-Security-Policy",
-    `default-src 'none'; script-src-elem 'nonce-${scriptNonceInitIframe}' 'nonce-${scriptNonceSdk}' 'sha256-bsEIDKWTI9z6t5IxKutxYdqL7bsmQfjIC0krSTqXng0=' 'sha256-5sm/hmmVH0VcGQrInWolR45+2sNfLbwwYahwnBdM48s=' 'sha256-Xomuaoc0SiD1FLNoZHQhKAmCKbqPxaCXScBsmrAW3Lc='; style-src 'sha256-Lrdk/twgnY5dzHPh8L8M/nMwQAxF/Muwk1j0oSRQMZU='; frame-src ${agpUrl};`
-  );
+  // c.header(
+  //   "Content-Security-Policy",
+  //   `default-src 'none'; script-src-elem 'nonce-${scriptNonceInitIframe}' 'nonce-${scriptNonceSdk}' 'sha256-bsEIDKWTI9z6t5IxKutxYdqL7bsmQfjIC0krSTqXng0=' 'sha256-5sm/hmmVH0VcGQrInWolR45+2sNfLbwwYahwnBdM48s=' 'sha256-Xomuaoc0SiD1FLNoZHQhKAmCKbqPxaCXScBsmrAW3Lc='; style-src 'sha256-Lrdk/twgnY5dzHPh8L8M/nMwQAxF/Muwk1j0oSRQMZU='; frame-src ${agpUrl} listen;`
+  // );
   const data = await response.json();
   return c.html(`
     <!DOCTYPE html>
@@ -133,10 +133,10 @@ function secureHeadersMiddleware() {
     //   "Content-Security-Policy",
     //   "default-src 'self'; script-src 'self'; script-src-elem 'sha256-bsEIDKWTI9z6t5IxKutxYdqL7bsmQfjIC0krSTqXng0=' 'sha256-5sm/hmmVH0VcGQrInWolR45+2sNfLbwwYahwnBdM48s='; style-src 'sha256-Lrdk/twgnY5dzHPh8L8M/nMwQAxF/Muwk1j0oSRQMZU=';"
     // );
-    c.header("X-Content-Type-Options", "nosniff");
-    c.header("X-Frame-Options", "DENY");
-    c.header("X-XSS-Protection", "1; mode=block");
-    c.header("Referrer-Policy", "no-referrer");
+    // c.header("X-Content-Type-Options", "nosniff");
+    // c.header("X-Frame-Options", "DENY");
+    // c.header("X-XSS-Protection", "1; mode=block");
+    // c.header("Referrer-Policy", "no-referrer");
     return next();
   };
 }

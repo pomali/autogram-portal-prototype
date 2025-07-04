@@ -2,6 +2,8 @@ import "dotenv/config";
 import { serve } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import sqlite3 from "sqlite3";
+import { serveStatic } from "hono/serve-static";
+import fs from "fs";
 
 const app = new Hono();
 app.use("*", secureHeadersMiddleware());
@@ -70,11 +72,11 @@ app.get("/iframe", async (c) => {
   }, new Set<string>());
   const connectSrc = Array.from(hosts).join(" ");
 
-  c.header(
-    "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'sha256-DU8Gtv52c36PRCB4HAG3PjLLhQwb8mXcpejpnYxWBCA=';" +
-      ` connect-src 'self' ${connectSrc};`
-  );
+  // c.header(
+  //   "Content-Security-Policy",
+  //   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'sha256-DU8Gtv52c36PRCB4HAG3PjLLhQwb8mXcpejpnYxWBCA=';" +
+  //     ` connect-src 'self' ${connectSrc} localhost:37200;`
+  // );
 
   // Return the HTML for the iframe, with the session ID and documents
   return c.html(`
@@ -88,6 +90,7 @@ app.get("/iframe", async (c) => {
       <h1>AGP Iframe</h1>
       <p>This is a mock AGP iframe.</p>
       <p>Session ID: ${sessionId}</p>
+      <script src="/public/autogram-sdk/index-all.global.js"></script>
       <script>
       const documentsManifest = ${JSON.stringify(
         documents.map((doc) => ({
@@ -117,25 +120,46 @@ app.get("/iframe", async (c) => {
                 });
             }
             contentPromise.then((content) => {
-              const signedDocument = "=== SIGNED === " + content + " === SIGNED ==="; // Mock signing process
-              // Send to server
-              fetch('/document-signed', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ sessionId: '${sessionId}', signedDocument }),
-              })
-              .then(response => {
-                if (!response.ok) {
-                  throw new Error('Network response was not ok');
-                }
-                console.log('AGP: Signed document sent to server');
+              AutogramSDK.CombinedClient.init().then((client) => {
+                console.log('AGP: Autogram SDK initialized');
+                client
+                  .sign(
+                    {
+                      content,
+                      filename: "hello.txt",
+                    },
+                    {
+                      level: "XAdES_BASELINE_B",
+                      container: "ASiC_E",
+                    },
+                    "text/plain",
+                    false
+                  )
+                  .then((signedObject) => {
+
+                  // const signedDocument = "=== SIGNED === " + content + " === SIGNED ==="; // Mock signing process
+                  const signedDocument = signedObject.content;
+
+                  // Send to server
+                  fetch('/document-signed', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ sessionId: '${sessionId}', signedDocument }),
+                  })
+                  .then(response => {
+                    if (!response.ok) {
+                      throw new Error('Network response was not ok');
+                    }
+                    console.log('AGP: Signed document sent to server');
+                  });
+                  // Send to parent window
+                  window.parent.postMessage({ type: 'documentSigned', sessionId: '${sessionId}', signedDocument }, '*');
+                }).catch(error => {
+                  console.error('AGP: Error signing document:', error);
+                });
               });
-              // Send to parent window
-              window.parent.postMessage({ type: 'documentSigned', sessionId: '${sessionId}', signedDocument }, '*');
-            }).catch(error => {
-              console.error('AGP: Error signing document:', error);
             });
           }
         }
@@ -236,7 +260,7 @@ app.post("/signing-complete", async (c) => {
   return c.text("ok", 200);
 });
 
-// AGP SDK 
+// AGP SDK
 app.get("/sdk.js", (c) => {
   return c.text(
     `
@@ -269,16 +293,29 @@ app.get("/sdk.js", (c) => {
   );
 });
 
+app.use(
+  "/public/*",
+  serveStatic({
+    root: "./",
+
+    getContent: (path: string, c: Context) => {
+      return fs.promises.readFile(path, {
+        encoding: "utf-8",
+      });
+    },
+  })
+);
+
 function secureHeadersMiddleware() {
   return (c: Context, next: () => Promise<void>) => {
-    c.header(
-      "Content-Security-Policy",
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'sha256-DU8Gtv52c36PRCB4HAG3PjLLhQwb8mXcpejpnYxWBCA=';"
-    );
-    c.header("X-Content-Type-Options", "nosniff");
+    // c.header(
+    //   "Content-Security-Policy",
+    //   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'sha256-DU8Gtv52c36PRCB4HAG3PjLLhQwb8mXcpejpnYxWBCA=' fonts.googleapis.com;"
+    // );
+    // c.header("X-Content-Type-Options", "nosniff");
     // c.header("X-Frame-Options", "DENY");
-    c.header("X-XSS-Protection", "1; mode=block");
-    c.header("Referrer-Policy", "no-referrer");
+    // c.header("X-XSS-Protection", "1; mode=block");
+    // c.header("Referrer-Policy", "no-referrer");
     return next();
   };
 }
