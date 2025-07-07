@@ -91,80 +91,22 @@ app.get("/iframe", async (c) => {
       <p>This is a mock AGP iframe.</p>
       <p>Session ID: ${sessionId}</p>
       <script src="/public/autogram-sdk/index-all.global.js"></script>
+      <script src="/public/main.js"></script>
+      <button id=btn-start-signing>Start Signing</button>
       <script>
-      const documentsManifest = ${JSON.stringify(
-        documents.map((doc) => ({
-          id: doc.daId,
-          title: doc.title,
-          content: doc.content,
-          url: doc.url,
-        }))
-      )}
-        function startSigning() {
-          console.log("AGP: manifest", documentsManifest);
-          for (const doc of documentsManifest) {
-            console.log('AGP: Starting signing for document:', doc);
-            let contentPromise = Promise.resolve(doc.content);
-            if (doc.url) {
-              // If the document has a URL, fetch it
-              contentPromise = fetch(doc.url)
-                .then(response => {
-                  if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                  }
-                  return response.text();
-                })
-                .then(fetchedContent => {
-                  console.log('AGP: Fetched document content:', fetchedContent);
-                  return fetchedContent;
-                });
-            }
-            contentPromise.then((content) => {
-              AutogramSDK.CombinedClient.init().then((client) => {
-                console.log('AGP: Autogram SDK initialized');
-                client
-                  .sign(
-                    {
-                      content,
-                      filename: "hello.txt",
-                    },
-                    {
-                      level: "XAdES_BASELINE_B",
-                      container: "ASiC_E",
-                    },
-                    "text/plain",
-                    false
-                  )
-                  .then((signedObject) => {
+        const documentsManifest = ${JSON.stringify(
+          documents.map((doc) => ({
+            id: doc.daId,
+            title: doc.title,
+            content: doc.content,
+            url: doc.url,
+          }))
+        )}
 
-                  // const signedDocument = "=== SIGNED === " + content + " === SIGNED ==="; // Mock signing process
-                  const signedDocument = signedObject.content;
-
-                  // Send to server
-                  fetch('/document-signed', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ sessionId: '${sessionId}', signedDocument }),
-                  })
-                  .then(response => {
-                    if (!response.ok) {
-                      throw new Error('Network response was not ok');
-                    }
-                    console.log('AGP: Signed document sent to server');
-                  });
-                  // Send to parent window
-                  window.parent.postMessage({ type: 'documentSigned', sessionId: '${sessionId}', signedDocument }, '*');
-                }).catch(error => {
-                  console.error('AGP: Error signing document:', error);
-                });
-              });
-            });
-          }
-        }
+        document.getElementById("btn-start-signing").addEventListener("click", () => {
+          startSigning("${sessionId}", documentsManifest);
+        });
       </script>
-      <button onclick="startSigning()">Start Signing</button>
     </body>
     </html>
   `);
@@ -273,16 +215,21 @@ app.get("/sdk.js", (c) => {
           iframe.style.height = '600px';
           iframe.style.border = 'none';
           // iframe.sandbox = 'allow-scripts allow-same-origin';
-
-          window.addEventListener('message', function(event) {
-          console.log('AGP: Message received from AGP Iframe:', event.data, event.origin);
-            if (event.origin !== window.location.origin) {
-              return;
-            }
-            console.log('AGP: Message received from AGP Iframe:', event.data);
-          });
           document.body.appendChild(iframe);
         },
+
+        addDocumentSignedListener: function(callback) {
+          window.addEventListener('message', function(event) {
+              console.log('AGP: Message received from AGP Iframe:', event.data, event.origin, window.location.origin);
+                if (event.origin !== "${process.env.BASE_URL}") {
+                  return;
+                }
+                console.log('AGP: Message received from AGP Iframe:', event.data);
+                if (event.data.type === "documentSigned") {
+                  callback(event.data.signedDocument);
+                }
+              });
+        }
       };
     })();
   `,

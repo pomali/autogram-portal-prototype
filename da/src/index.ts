@@ -79,22 +79,18 @@ app.get("/sign", async (c) => {
     <body>
       <h1>DA Sign</h1>
       <p>Signing process started. AGP session ID: ${data.sessionId}</p>
+
+      <ul>
+      </ul>
+      
       <script src="${agpUrl}/sdk.js" nonce=${scriptNonceSdk}></script>
       <script nonce="${scriptNonceInitIframe}">
         agp.initIframe("${data.sessionId}");
-      </script>
-      <ul>
-      </ul>
-      <script>
-       window.addEventListener("message", (event) => {
-          console.log("DA: Message received from AGPXXX:", event);
-          if (event.origin !== "${agpUrl}") return;
-          if (event.data.type === "documentSigned") {
-            const signedDocument = event.data.signedDocument;
-            const li = document.createElement("li");
-            li.textContent = "Document signed: " + signedDocument;
-            document.querySelector("ul").appendChild(li);
-          }
+        agp.addDocumentSignedListener((signedDocument) => {
+          console.log("DA: Document signed:", signedDocument);
+          const li = document.createElement("li");
+          li.textContent = "Document signed: " + signedDocument;
+          document.querySelector("ul").appendChild(li);
         });
       </script>
     </body>
